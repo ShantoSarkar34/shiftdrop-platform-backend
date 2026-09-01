@@ -1,0 +1,22 @@
+model User {
+    id       String       @id @default(uuid())
+    name     String
+    email    String       @unique
+    password String? // nullable — Google-only users have no password
+    phone    String?
+    role     Role
+    provider AuthProvider @default(LOCAL)
+    googleId String?      @unique
+    status   UserStatus   @default(ACTIVE)
+
+    customer      Customer?
+    deliveryAgent DeliveryAgent?
+    refreshTokens RefreshToken[]
+
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+
+    @@index([role])
+    @@map("users")
+}

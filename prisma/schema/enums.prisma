@@ -1,0 +1,21 @@
+enum Role {
+    CUSTOMER
+    DELIVERY_AGENT
+    ADMIN
+}
+
+enum AuthProvider {
+    LOCAL
+    GOOGLE
+}
+
+enum UserStatus {
+    ACTIVE
+    SUSPENDED
+}
+
+enum AgentAvailability {
+    AVAILABLE
+    ON_DELIVERY
+    OFFLINE
+}

@@ -6,6 +6,7 @@ import {
 } from "../../utils/jwt";
 import { prisma } from "../../lib/prisma";
 import { env } from "../../config/env";
+import { OAuth2Client } from "google-auth-library";
 
 interface RegisterInput {
   name: string;
@@ -27,6 +28,7 @@ class ApiError extends Error {
     this.statusCode = statusCode;
   }
 }
+const googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
 
 const msToDate = (expiresIn: string): Date => {
   const match = expiresIn.match(/^(\d+)([smhd])$/);
@@ -82,6 +84,56 @@ export const authService = {
 
     const isMatch = await bcrypt.compare(input.password, user.password);
     if (!isMatch) throw new ApiError(401, "Invalid email or password");
+
+    return this.issueTokens(user.id, user.role);
+  },
+
+  async googleLogin(idToken: string) {
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken,
+        audience: env.GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } catch {
+      throw new ApiError(401, "Invalid Google token");
+    }
+
+    if (!payload?.email) {
+      throw new ApiError(401, "Google account has no verified email");
+    }
+
+    let user = await prisma.user.findUnique({
+      where: { email: payload.email },
+    });
+
+    if (user) {
+      if (user.deletedAt) throw new ApiError(401, "Account no longer active");
+      if (user.status === "SUSPENDED")
+        throw new ApiError(403, "Account suspended");
+
+      if (!user.googleId) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { googleId: payload.sub, provider: "GOOGLE" },
+        });
+      }
+    } else {
+      user = await prisma.$transaction(async (tx) => {
+        const newUser = await tx.user.create({
+          data: {
+            name: payload.name ?? payload.email!.split("@")[0],
+            email: payload.email!,
+            googleId: payload.sub,
+            provider: "GOOGLE",
+            role: "CUSTOMER",
+          },
+        });
+        await tx.customer.create({ data: { userId: newUser.id } });
+        return newUser;
+      });
+    }
 
     return this.issueTokens(user.id, user.role);
   },

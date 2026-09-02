@@ -5,6 +5,7 @@ import {
   registerSchema,
   loginSchema,
   refreshTokenSchema,
+  googleLoginSchema,
 } from "./auth.validation";
 
 const router = Router();
@@ -15,6 +16,11 @@ router.post(
   authController.register,
 );
 router.post("/login", validateRequest(loginSchema), authController.login);
+router.post(
+  "/google",
+  validateRequest(googleLoginSchema),
+  authController.googleLogin,
+);
 router.post(
   "/refresh-token",
   validateRequest(refreshTokenSchema),

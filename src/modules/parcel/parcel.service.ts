@@ -4,6 +4,7 @@ import { generateTrackingId } from "../../utils/generateTrackingId";
 import { calculateDeliveryCharge } from "./parcel.pricing";
 import { ParcelStatus, Role } from "../../../generated/prisma";
 import { isValidTransition } from "./parcel.stateMachine";
+import { logAudit } from "../../utils/auditLogger";
 
 interface CreateParcelInput {
   senderName: string;
@@ -52,6 +53,17 @@ export const parcelService = {
           note: "Shipment created",
         },
       });
+
+      await logAudit(
+        {
+          actorId: userId,
+          action: "SHIPMENT_CREATED",
+          entityType: "Parcel",
+          entityId: parcel.id,
+          metadata: { trackingId, deliveryCharge },
+        },
+        tx,
+      );
 
       return parcel;
     });
@@ -151,6 +163,16 @@ export const parcelService = {
         },
       });
 
+      await logAudit(
+        {
+          actorId: userId,
+          action: "SHIPMENT_CANCELLED",
+          entityType: "Parcel",
+          entityId: parcelId,
+        },
+        tx,
+      );
+
       return updated;
     });
   },
@@ -160,13 +182,17 @@ export const parcelService = {
     role: Role,
     parcelId: string,
     newStatus: ParcelStatus,
-    note?: string
+    note?: string,
   ) {
-    const parcel = await prisma.parcel.findUnique({ where: { id: parcelId, deletedAt: null } });
+    const parcel = await prisma.parcel.findUnique({
+      where: { id: parcelId, deletedAt: null },
+    });
     if (!parcel) throw new ApiError(404, "Parcel not found");
 
     if (role === "DELIVERY_AGENT") {
-      const agent = await prisma.deliveryAgent.findUnique({ where: { userId } });
+      const agent = await prisma.deliveryAgent.findUnique({
+        where: { userId },
+      });
       if (!agent || parcel.assignedAgentId !== agent.id) {
         throw new ApiError(403, "This shipment is not assigned to you");
       }
@@ -176,7 +202,7 @@ export const parcelService = {
     if (!isValidTransition(parcel.status, newStatus)) {
       throw new ApiError(
         409,
-        `Cannot transition from ${parcel.status} to ${newStatus}`
+        `Cannot transition from ${parcel.status} to ${newStatus}`,
       );
     }
 
@@ -196,12 +222,26 @@ export const parcelService = {
       });
 
       // If parcel reaches a terminal delivery-cycle state, free up the agent
-      if (["DELIVERED", "RETURNED"].includes(newStatus) && parcel.assignedAgentId) {
+      if (
+        ["DELIVERED", "RETURNED"].includes(newStatus) &&
+        parcel.assignedAgentId
+      ) {
         await tx.deliveryAgent.update({
           where: { id: parcel.assignedAgentId },
           data: { availability: "AVAILABLE" },
         });
       }
+
+      await logAudit(
+        {
+          actorId: userId,
+          action: "SHIPMENT_STATUS_CHANGED",
+          entityType: "Parcel",
+          entityId: parcelId,
+          metadata: { from: parcel.status, to: newStatus },
+        },
+        tx,
+      );
 
       return updated;
     });

@@ -7,6 +7,7 @@ import {
 import { prisma } from "../../lib/prisma";
 import { env } from "../../config/env";
 import { OAuth2Client } from "google-auth-library";
+import { logAudit } from "../../utils/auditLogger";
 
 interface RegisterInput {
   name: string;
@@ -65,6 +66,16 @@ export const authService = {
       } else if (input.role === "DELIVERY_AGENT") {
         await tx.deliveryAgent.create({ data: { userId: newUser.id } });
       }
+      await logAudit(
+        {
+          actorId: newUser.id,
+          action: "USER_REGISTERED",
+          entityType: "User",
+          entityId: newUser.id,
+          metadata: { role: input.role },
+        },
+        tx,
+      );
 
       return newUser;
     });

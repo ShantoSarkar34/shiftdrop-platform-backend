@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma";
 import { ApiError } from "../../modules/auth/auth.service";
+import { logAudit } from "../../utils/auditLogger";
 
 export const deliveryService = {
   async assignAgent(
@@ -61,6 +62,17 @@ export const deliveryService = {
           note: `Assigned to agent ${agent.user.name}`,
         },
       });
+
+      await logAudit(
+        {
+          actorId: adminUserId,
+          action: "SHIPMENT_ASSIGNED",
+          entityType: "Parcel",
+          entityId: parcelId,
+          metadata: { agentId: agent.id, agentName: agent.user.name },
+        },
+        tx,
+      );
 
       return tx.parcel.findUnique({ where: { id: parcelId } });
     });

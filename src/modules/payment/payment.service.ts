@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma";
 import { stripe } from "../../lib/stripe";
 import { ApiError } from "../../modules/auth/auth.service";
 import { env } from "../../config/env";
+import { logAudit } from "../../utils/auditLogger";
 
 export const paymentService = {
   async createCheckoutSession(userId: string, parcelId: string) {
@@ -133,6 +134,17 @@ export const paymentService = {
           note: "Payment confirmed via Stripe",
         },
       });
+
+      await logAudit(
+        {
+          actorId: null,
+          action: "PAYMENT_COMPLETED",
+          entityType: "Payment",
+          entityId: payment.id,
+          metadata: { amount: payment.amount },
+        },
+        tx,
+      );
     });
   },
 

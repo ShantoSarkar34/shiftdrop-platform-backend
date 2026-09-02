@@ -1,0 +1,81 @@
+enum ParcelType {
+    DOCUMENT
+    PACKAGE
+    FRAGILE
+    ELECTRONICS
+    OTHER
+}
+
+enum ServiceType {
+    STANDARD
+    EXPRESS
+}
+
+enum ParcelStatus {
+    PENDING
+    CONFIRMED
+    ASSIGNED
+    PICKED_UP
+    IN_TRANSIT
+    OUT_FOR_DELIVERY
+    DELIVERED
+    CANCELLED
+    FAILED_DELIVERY
+    RETURNED
+}
+
+model Parcel {
+    id         String @id @default(uuid())
+    trackingId String @unique
+
+    customerId String
+    customer   Customer @relation(fields: [customerId], references: [id])
+
+    assignedAgentId String?
+    assignedAgent   DeliveryAgent? @relation(fields: [assignedAgentId], references: [id])
+
+    senderName    String
+    senderPhone   String
+    receiverName  String
+    receiverPhone String
+
+    pickupAddress   String
+    pickupCity      String
+    deliveryAddress String
+    deliveryCity    String
+
+    parcelType     ParcelType
+    weightKg       Float
+    serviceType    ServiceType
+    deliveryCharge Float
+
+    status ParcelStatus @default(PENDING)
+    notes  String?
+
+    statusHistory ParcelStatusHistory[]
+
+    createdAt   DateTime  @default(now())
+    updatedAt   DateTime  @updatedAt
+    cancelledAt DateTime?
+    deletedAt   DateTime?
+
+    @@index([customerId])
+    @@index([assignedAgentId])
+    @@index([status])
+    @@map("parcels")
+}
+
+model ParcelStatusHistory {
+    id       String @id @default(uuid())
+    parcelId String
+    parcel   Parcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+    status    ParcelStatus
+    changedBy String? // userId of whoever triggered it (nullable for system actions)
+    note      String?
+
+    createdAt DateTime @default(now())
+
+    @@index([parcelId])
+    @@map("parcel_status_history")
+}

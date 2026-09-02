@@ -3,9 +3,10 @@ model DeliveryAgent {
     userId String @unique
     user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    vehicleType   String?
-    licenseNumber String?
-    availability  AgentAvailability @default(OFFLINE)
+    vehicleType     String?
+    licenseNumber   String?
+    availability    AgentAvailability @default(OFFLINE)
+    assignedParcels Parcel[]
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt

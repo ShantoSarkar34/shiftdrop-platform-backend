@@ -9,21 +9,28 @@ import { env } from "./config/env";
 import { notFound } from "./middlewares/notFound";
 import { globalErrorHandler } from "./middlewares/globalErrorHandler";
 import v1Routes from "./routers/index";
+import { paymentController } from "./modules/payment/payment.controller";
 
 const app: Application = express();
 
 app.use(cors());
-app.use(express.json());
 app.use(cookieParser());
+
+// Stripe webhook MUST receive the raw body — mounted BEFORE express.json()
+app.post(
+  "/api/v1/payments/webhook",
+  express.raw({ type: "application/json" }),
+  paymentController.webhook
+);
+
+// Now safe to parse JSON for every other route
+app.use(express.json());
 
 app.get(
   "/",
   catchAsync(async (req: Request, res: Response) => {
-    sendResponse(res, 200, {
-      success: true,
-      message: "SwiftDrop Server is running now!",
-    });
-  }),
+    sendResponse(res, 200, { success: true, message: "SwiftDrop Server is running now!" });
+  })
 );
 
 app.get(
@@ -48,7 +55,7 @@ app.get(
         redisTtlSample: ttl,
       },
     });
-  }),
+  })
 );
 
 app.use("/api/v1", v1Routes);

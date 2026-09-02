@@ -1,0 +1,31 @@
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+}
+
+model Payment {
+  id                    String        @id @default(uuid())
+
+  parcelId              String        @unique
+  parcel                Parcel        @relation(fields: [parcelId], references: [id])
+
+  customerId            String
+  customer              Customer      @relation(fields: [customerId], references: [id])
+
+  amount                Float
+  currency              String        @default("usd")
+  status                PaymentStatus @default(PENDING)
+
+  stripeCheckoutSessionId String?     @unique
+  stripePaymentIntentId   String?
+  lastProcessedEventId    String?     // idempotency guard
+
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+  @@map("payments")
+}

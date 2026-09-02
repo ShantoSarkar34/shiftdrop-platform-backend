@@ -5,6 +5,7 @@ model Customer {
 
     defaultPickupAddress String?
     parcels              Parcel[]
+    payments             Payment[]
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt

@@ -3,7 +3,7 @@ import { parcelController } from "./parcel.controller";
 import { authenticate } from "../../middlewares/authenticate";
 import { authorize } from "../../middlewares/authorize";
 import { validateRequest } from "../../middlewares/validateRequest";
-import { createParcelSchema, listParcelsSchema, parcelIdParamSchema } from "./parce.validation";
+import { createParcelSchema, listParcelsSchema, parcelIdParamSchema, updateStatusSchema } from "./parce.validation";
 
 const router = Router();
 
@@ -35,6 +35,14 @@ router.patch(
   authorize("CUSTOMER"),
   validateRequest(parcelIdParamSchema),
   parcelController.cancel
+);
+
+router.patch(
+  "/:id/status",
+  authenticate,
+  authorize("DELIVERY_AGENT", "ADMIN"),
+  validateRequest(updateStatusSchema),
+  parcelController.updateStatus
 );
 
 export default router;

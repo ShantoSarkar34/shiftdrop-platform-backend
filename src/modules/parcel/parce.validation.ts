@@ -35,3 +35,19 @@ export const parcelIdParamSchema = z.object({
     id: z.string().uuid("Invalid parcel ID"),
   }),
 });
+
+export const updateStatusSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("Invalid parcel ID"),
+  }),
+  body: z.object({
+    status: z.enum([
+      "IN_TRANSIT",
+      "OUT_FOR_DELIVERY",
+      "DELIVERED",
+      "FAILED_DELIVERY",
+      "RETURNED",
+    ]),
+    note: z.string().optional(),
+  }),
+});

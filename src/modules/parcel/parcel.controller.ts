@@ -19,7 +19,12 @@ export const parcelController = {
     if (!req.user) throw new ApiError(401, "Authentication required");
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
-    const result = await parcelService.list(req.user.userId, req.user.role, page, limit);
+    const result = await parcelService.list(
+      req.user.userId,
+      req.user.role,
+      page,
+      limit,
+    );
     sendResponse(res, 200, {
       success: true,
       message: "Shipments retrieved successfully",
@@ -31,7 +36,11 @@ export const parcelController = {
   getById: catchAsync(async (req: Request, res: Response) => {
     if (!req.user) throw new ApiError(401, "Authentication required");
     const parcelId = req.params.id as string;
-    const parcel = await parcelService.getById(req.user.userId, req.user.role, parcelId);
+    const parcel = await parcelService.getById(
+      req.user.userId,
+      req.user.role,
+      parcelId,
+    );
     sendResponse(res, 200, {
       success: true,
       message: "Shipment retrieved successfully",
@@ -46,6 +55,24 @@ export const parcelController = {
     sendResponse(res, 200, {
       success: true,
       message: "Shipment cancelled successfully",
+      data: parcel,
+    });
+  }),
+
+  updateStatus: catchAsync(async (req: Request, res: Response) => {
+    if (!req.user) throw new ApiError(401, "Authentication required");
+    const parcelId = req.params.id as string;
+    const { status, note } = req.body;
+    const parcel = await parcelService.updateStatus(
+      req.user.userId,
+      req.user.role,
+      parcelId,
+      status,
+      note,
+    );
+    sendResponse(res, 200, {
+      success: true,
+      message: `Shipment status updated to ${status}`,
       data: parcel,
     });
   }),

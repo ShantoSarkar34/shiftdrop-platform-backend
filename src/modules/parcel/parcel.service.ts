@@ -2,7 +2,8 @@ import { prisma } from "../../lib/prisma";
 import { ApiError } from "../../modules/auth/auth.service";
 import { generateTrackingId } from "../../utils/generateTrackingId";
 import { calculateDeliveryCharge } from "./parcel.pricing";
-import { Role } from "../../../generated/prisma";
+import { ParcelStatus, Role } from "../../../generated/prisma";
+import { isValidTransition } from "./parcel.stateMachine";
 
 interface CreateParcelInput {
   senderName: string;
@@ -149,6 +150,58 @@ export const parcelService = {
           note: "Cancelled by customer",
         },
       });
+
+      return updated;
+    });
+  },
+
+  async updateStatus(
+    userId: string,
+    role: Role,
+    parcelId: string,
+    newStatus: ParcelStatus,
+    note?: string
+  ) {
+    const parcel = await prisma.parcel.findUnique({ where: { id: parcelId, deletedAt: null } });
+    if (!parcel) throw new ApiError(404, "Parcel not found");
+
+    if (role === "DELIVERY_AGENT") {
+      const agent = await prisma.deliveryAgent.findUnique({ where: { userId } });
+      if (!agent || parcel.assignedAgentId !== agent.id) {
+        throw new ApiError(403, "This shipment is not assigned to you");
+      }
+    }
+    // ADMIN: no ownership restriction
+
+    if (!isValidTransition(parcel.status, newStatus)) {
+      throw new ApiError(
+        409,
+        `Cannot transition from ${parcel.status} to ${newStatus}`
+      );
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.parcel.update({
+        where: { id: parcelId },
+        data: { status: newStatus },
+      });
+
+      await tx.parcelStatusHistory.create({
+        data: {
+          parcelId,
+          status: newStatus,
+          changedBy: userId,
+          note: note ?? `Status changed to ${newStatus}`,
+        },
+      });
+
+      // If parcel reaches a terminal delivery-cycle state, free up the agent
+      if (["DELIVERED", "RETURNED"].includes(newStatus) && parcel.assignedAgentId) {
+        await tx.deliveryAgent.update({
+          where: { id: parcel.assignedAgentId },
+          data: { availability: "AVAILABLE" },
+        });
+      }
 
       return updated;
     });

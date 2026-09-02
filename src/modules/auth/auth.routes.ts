@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { authController } from "./auth.controller";
 import { validateRequest } from "../../middlewares/validateRequest";
+import { authenticate } from "../../middlewares/authenticate";
+import { authorize } from "../../middlewares/authorize";
+import { sendResponse } from "../../utils/sendResponse";
 import {
   registerSchema,
   loginSchema,
@@ -31,5 +34,23 @@ router.post(
   validateRequest(refreshTokenSchema),
   authController.logout,
 );
+
+// Temporary test route — will be replaced by the real profile route in Phase 9
+router.get("/me", authenticate, (req, res) => {
+  sendResponse(res, 200, {
+    success: true,
+    message: "Authenticated",
+    data: req.user,
+  });
+});
+
+// Temporary test route — proves role restriction works
+router.get("/admin-only", authenticate, authorize("ADMIN"), (req, res) => {
+  sendResponse(res, 200, {
+    success: true,
+    message: "You are an admin",
+    data: req.user,
+  });
+});
 
 export default router;

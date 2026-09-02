@@ -8,6 +8,7 @@ import { prisma } from "./lib/prisma";
 import { env } from "./config/env";
 import { notFound } from "./middlewares/notFound";
 import { globalErrorHandler } from "./middlewares/globalErrorHandler";
+import authRoutes from "./modules/auth/auth.routes";
 
 const app: Application = express();
 
@@ -50,6 +51,7 @@ app.get(
     });
   }),
 );
+app.use("/api/v1/auth", authRoutes);
 
 app.use(notFound);
 app.use(globalErrorHandler);

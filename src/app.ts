@@ -8,7 +8,7 @@ import { redisService } from "./lib/redisService";
 import { env } from "./config/env";
 import { notFound } from "./middlewares/notFound";
 import { globalErrorHandler } from "./middlewares/globalErrorHandler";
-import authRoutes from "./modules/auth/auth.routes";
+import v1Routes from "./routers/index";
 
 const app: Application = express();
 
@@ -30,7 +30,6 @@ app.get(
   "/api/v1/health",
   catchAsync(async (req: Request, res: Response) => {
     await prisma.$queryRaw`SELECT 1`;
-
     const testKey = "health:check";
     await redisService.set(testKey, "ok", 30);
     const value = await redisService.get(testKey);
@@ -51,7 +50,8 @@ app.get(
     });
   }),
 );
-app.use("/api/v1/auth", authRoutes);
+
+app.use("/api/v1", v1Routes);
 
 app.use(notFound);
 app.use(globalErrorHandler);

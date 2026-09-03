@@ -69,7 +69,18 @@ export const parcelService = {
     });
   },
 
-  async list(userId: string, role: Role, page: number, limit: number) {
+  async list(
+    userId: string,
+    role: Role,
+    page: number,
+    limit: number,
+    options: {
+      status?: ParcelStatus;
+      sortBy?: "createdAt" | "deliveryCharge";
+      sortOrder?: "asc" | "desc";
+      q?: string;
+    } = {},
+  ) {
     const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = { deletedAt: null };
@@ -85,15 +96,26 @@ export const parcelService = {
       if (!agent) throw new ApiError(404, "Delivery agent profile not found");
       where.assignedAgentId = agent.id;
     }
-    // ADMIN: no filter — sees all parcels
+    // ADMIN: no filter
+
+    if (options.status) {
+      where.status = options.status;
+    }
+
+    if (options.q) {
+      where.OR = [
+        { trackingId: { contains: options.q, mode: "insensitive" } },
+        { receiverName: { contains: options.q, mode: "insensitive" } },
+        { senderName: { contains: options.q, mode: "insensitive" } },
+      ];
+    }
+
+    const orderBy = {
+      [options.sortBy ?? "createdAt"]: options.sortOrder ?? "desc",
+    };
 
     const [parcels, total] = await Promise.all([
-      prisma.parcel.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: "desc" },
-      }),
+      prisma.parcel.findMany({ where, skip, take: limit, orderBy }),
       prisma.parcel.count({ where }),
     ]);
 

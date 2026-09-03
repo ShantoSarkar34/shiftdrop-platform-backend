@@ -27,6 +27,23 @@ export const listParcelsSchema = z.object({
   query: z.object({
     page: z.string().regex(/^\d+$/).optional(),
     limit: z.string().regex(/^\d+$/).optional(),
+    status: z
+      .enum([
+        "PENDING",
+        "CONFIRMED",
+        "ASSIGNED",
+        "PICKED_UP",
+        "IN_TRANSIT",
+        "OUT_FOR_DELIVERY",
+        "DELIVERED",
+        "CANCELLED",
+        "FAILED_DELIVERY",
+        "RETURNED",
+      ])
+      .optional(),
+    sortBy: z.enum(["createdAt", "deliveryCharge"]).optional(),
+    sortOrder: z.enum(["asc", "desc"]).optional(),
+    q: z.string().min(1).optional(),
   }),
 });
 

@@ -24,6 +24,12 @@ export const parcelController = {
       req.user.role,
       page,
       limit,
+      {
+        status: req.query.status as any,
+        sortBy: req.query.sortBy as any,
+        sortOrder: req.query.sortOrder as any,
+        q: req.query.q as string | undefined,
+      },
     );
     sendResponse(res, 200, {
       success: true,

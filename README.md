@@ -2,7 +2,9 @@
 
 A backend-only courier and logistics platform where customers create and track parcel shipments, delivery agents manage assigned deliveries, and administrators oversee users, shipments, delivery operations, payments, and platform activity. Built to support a frontend that will be developed separately later, without requiring architectural changes to the API.
 
-**Live API:** https://shiftdrop-platform-backend.vercel.app/
+**Live API:** https://shiftdrop-platform-backend.vercel.app
+
+**APIs**: /api/v1
 
 ---
 
@@ -227,12 +229,13 @@ Full request/response examples for every route below are in the accompanying **P
 
 ### Deliveries (`/api/v1/deliveries`)
 
-| Method | Route               | Access         | Description                                        |
-| ------ | ------------------- | -------------- | -------------------------------------------------- |
-| PATCH  | `/:parcelId/assign` | ADMIN          | Assign a delivery agent (by User ID) to a shipment |
-| PATCH  | `/:parcelId/accept` | DELIVERY_AGENT | Accept an assignment                               |
-| PATCH  | `/:parcelId/reject` | DELIVERY_AGENT | Reject an assignment (returns parcel to pool)      |
-| PATCH  | `/:parcelId/pickup` | DELIVERY_AGENT | Mark parcel as picked up                           |
+| Method | Route               | Access         | Description                                                       |
+| ------ | ------------------- | -------------- | ----------------------------------------------------------------- |
+| PATCH  | `/:parcelId/assign` | ADMIN          | Assign a delivery agent (by User ID) to a shipment                |
+| PATCH  | `/:parcelId/accept` | DELIVERY_AGENT | Accept an assignment                                              |
+| PATCH  | `/:parcelId/reject` | DELIVERY_AGENT | Reject an assignment (returns parcel to pool)                     |
+| PATCH  | `/:parcelId/pickup` | DELIVERY_AGENT | Mark parcel as picked up                                          |
+| GET    | `/my`               | DELIVERY_AGENT | List own assigned deliveries — supports `page`, `limit`, `status` |
 
 ### Payments (`/api/v1/payments`)
 
@@ -245,9 +248,11 @@ Full request/response examples for every route below are in the accompanying **P
 
 ### Admin (`/api/v1/admin`)
 
-| Method | Route         | Access | Description                                                                            |
-| ------ | ------------- | ------ | -------------------------------------------------------------------------------------- |
-| GET    | `/audit-logs` | ADMIN  | View audit trail — supports `page`, `limit`, `action`, `entityType`, `actorId` filters |
+| Method | Route               | Access | Description                                                                                                                                                                                    |
+| ------ | ------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/audit-logs`       | ADMIN  | View audit trail — supports `page`, `limit`, `action`, `entityType`, `actorId` filters                                                                                                         |
+| GET    | `/users`            | ADMIN  | List platform users — supports `page`, `limit`, `role`, `status`, `q` (name/email search), `sortBy`, `sortOrder`. Never returns password hashes or refresh tokens; excludes soft-deleted users |
+| PATCH  | `/users/:id/status` | ADMIN  | Set a user's status to `ACTIVE` or `SUSPENDED`. Cannot change role. Cannot be used on the admin's own account. Writes a `USER_STATUS_CHANGED` audit log entry                                  |
 
 ### Health
 

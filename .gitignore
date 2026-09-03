@@ -8,3 +8,4 @@ dist/
 /generated
 .vercel
 .project_progress.txt
+.siftdropCollection.json

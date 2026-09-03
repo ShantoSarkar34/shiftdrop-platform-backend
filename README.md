@@ -4,7 +4,7 @@ A backend-only courier and logistics platform where customers create and track p
 
 **Live API:** https://shiftdrop-platform-backend.vercel.app
 
-**APIs**: /api/v1
+**APIs**: `/api/v1`
 
 ---
 
@@ -296,7 +296,3 @@ stripe listen --forward-to localhost:5000/api/v1/payments/webhook
 ```
 
 ---
-
-## Status
-
-Actively in development, built incrementally in phases. Remaining work: final security review pass, complete Postman coverage validation, seeded demo admin account, and production redeploy verification.

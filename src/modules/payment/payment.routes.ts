@@ -4,11 +4,13 @@ import { authenticate } from "../../middlewares/authenticate";
 import { authorize } from "../../middlewares/authorize";
 import { validateRequest } from "../../middlewares/validateRequest";
 import { createCheckoutSchema } from "./payment.validation";
+import { paymentLimiter } from "../../middlewares/rateLimiter";
 
 const router = Router();
 
 router.post(
   "/:parcelId/checkout",
+  paymentLimiter,
   authenticate,
   authorize("CUSTOMER"),
   validateRequest(createCheckoutSchema),

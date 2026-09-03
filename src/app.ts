@@ -1,4 +1,5 @@
 import express, { Application, Request, Response } from "express";
+import helmet from "helmet";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import { catchAsync } from "./utils/catchAsync";
@@ -8,29 +9,47 @@ import { redisService } from "./lib/redisService";
 import { env } from "./config/env";
 import { notFound } from "./middlewares/notFound";
 import { globalErrorHandler } from "./middlewares/globalErrorHandler";
-import v1Routes from "./routers/index";
+import { globalLimiter } from "./middlewares/rateLimiter";
+import v1Routes from "./routes/index";
 import { paymentController } from "./modules/payment/payment.controller";
 
 const app: Application = express();
 
-app.use(cors());
-app.use(cookieParser());
+app.use(helmet());
 
-// Stripe webhook MUST receive the raw body — mounted BEFORE express.json()
+const allowedOrigins = env.ALLOWED_ORIGINS.split(",").map((o) => o.trim());
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true,
+  }),
+);
+
+app.use(cookieParser());
+app.use(globalLimiter);
+
 app.post(
   "/api/v1/payments/webhook",
   express.raw({ type: "application/json" }),
-  paymentController.webhook
+  paymentController.webhook,
 );
 
-// Now safe to parse JSON for every other route
 app.use(express.json());
 
 app.get(
   "/",
   catchAsync(async (req: Request, res: Response) => {
-    sendResponse(res, 200, { success: true, message: "SwiftDrop Server is running now!" });
-  })
+    sendResponse(res, 200, {
+      success: true,
+      message: "SwiftDrop Server is running now!",
+    });
+  }),
 );
 
 app.get(
@@ -55,7 +74,7 @@ app.get(
         redisTtlSample: ttl,
       },
     });
-  })
+  }),
 );
 
 app.use("/api/v1", v1Routes);

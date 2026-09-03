@@ -3,9 +3,21 @@ import { deliveryController } from "./delivery.controller";
 import { authenticate } from "../../middlewares/authenticate";
 import { authorize } from "../../middlewares/authorize";
 import { validateRequest } from "../../middlewares/validateRequest";
-import { assignAgentSchema, deliveryActionSchema } from "./delivery.validation";
+import {
+  assignAgentSchema,
+  deliveryActionSchema,
+  myDeliveriesSchema,
+} from "./delivery.validation";
 
 const router = Router();
+
+router.get(
+  "/my",
+  authenticate,
+  authorize("DELIVERY_AGENT"),
+  validateRequest(myDeliveriesSchema),
+  deliveryController.getMyDeliveries,
+);
 
 router.patch(
   "/:parcelId/assign",

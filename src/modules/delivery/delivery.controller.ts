@@ -58,4 +58,23 @@ export const deliveryController = {
       data: parcel,
     });
   }),
+
+  getMyDeliveries: catchAsync(async (req: Request, res: Response) => {
+    if (!req.user) throw new ApiError(401, "Authentication required");
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const status = req.query.status as any;
+    const result = await deliveryService.getMyDeliveries(
+      req.user.userId,
+      page,
+      limit,
+      status,
+    );
+    sendResponse(res, 200, {
+      success: true,
+      message: "Assigned deliveries retrieved successfully",
+      data: result.parcels,
+      meta: result.meta,
+    });
+  }),
 };

@@ -1,6 +1,7 @@
 import { prisma } from "../../lib/prisma";
 import { ApiError } from "../../modules/auth/auth.service";
 import { logAudit } from "../../utils/auditLogger";
+import { ParcelStatus } from "../../../generated/prisma";
 
 export const deliveryService = {
   async assignAgent(
@@ -185,5 +186,53 @@ export const deliveryService = {
 
       return updated;
     });
+  },
+
+  async getMyDeliveries(
+    userId: string,
+    page: number,
+    limit: number,
+    status?: ParcelStatus,
+  ) {
+    const agent = await prisma.deliveryAgent.findUnique({ where: { userId } });
+    if (!agent) throw new ApiError(404, "Delivery agent profile not found");
+
+    const skip = (page - 1) * limit;
+    const where: Record<string, unknown> = {
+      assignedAgentId: agent.id,
+      deletedAt: null,
+    };
+    if (status) where.status = status;
+
+    const [parcels, total] = await Promise.all([
+      prisma.parcel.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          trackingId: true,
+          status: true,
+          pickupAddress: true,
+          pickupCity: true,
+          deliveryAddress: true,
+          deliveryCity: true,
+          receiverName: true,
+          receiverPhone: true,
+          weightKg: true,
+          serviceType: true,
+          deliveryCharge: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      prisma.parcel.count({ where }),
+    ]);
+
+    return {
+      parcels,
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
   },
 };

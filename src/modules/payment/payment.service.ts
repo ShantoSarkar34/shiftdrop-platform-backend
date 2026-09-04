@@ -38,8 +38,8 @@ export const paymentService = {
           quantity: 1,
         },
       ],
-      success_url: `${env.CLIENT_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${env.CLIENT_URL}/payment/cancelled`,
+      success_url: `${env.CLIENT_URL}/payment-success.html`,
+      cancel_url: `${env.CLIENT_URL}/payment-cancelled.html`,
       metadata: { parcelId: parcel.id, customerId: customer.id },
     });
 

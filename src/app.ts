@@ -33,6 +33,7 @@ app.use(
 
 app.use(cookieParser());
 app.use(globalLimiter);
+app.use(express.static("public"));
 
 app.post(
   "/api/v1/payments/webhook",

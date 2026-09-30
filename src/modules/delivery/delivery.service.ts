@@ -367,4 +367,81 @@ export const deliveryService = {
         .sort((a, b) => a.date.localeCompare(b.date)),
     };
   },
+
+  async getAnalytics(userId: string, period?: "7d" | "30d" | "90d" | "year") {
+    const agent = await prisma.deliveryAgent.findUnique({ where: { userId } });
+    if (!agent) throw new ApiError(404, "Delivery agent profile not found");
+
+    const PERIOD_DAYS: Record<string, number> = {
+      "7d": 7,
+      "30d": 30,
+      "90d": 90,
+      year: 365,
+    };
+    let startDate: Date | undefined;
+    if (period) {
+      startDate = new Date();
+      startDate.setDate(startDate.getDate() - PERIOD_DAYS[period]);
+    }
+
+    const baseWhere: Prisma.ParcelWhereInput = {
+      assignedAgentId: agent.id,
+      deletedAt: null,
+    };
+
+    const periodWhere: Prisma.ParcelWhereInput = {
+      ...baseWhere,
+      ...(startDate && { updatedAt: { gte: startDate } }),
+    };
+
+    const [totalAssigned, statusGroups, outcomeParcels] = await Promise.all([
+      prisma.parcel.count({ where: baseWhere }), // lifetime, not period-filtered
+
+      prisma.parcel.groupBy({
+        by: ["status"],
+        where: periodWhere,
+        _count: { _all: true },
+      }),
+
+      prisma.parcel.findMany({
+        where: {
+          ...periodWhere,
+          status: { in: ["DELIVERED", "FAILED_DELIVERY", "RETURNED"] },
+        },
+        select: { status: true, updatedAt: true },
+      }),
+    ]);
+
+    const deliveriesByStatus = statusGroups.map((g) => ({
+      status: g.status,
+      count: g._count._all,
+    }));
+
+    const totalCompleted =
+      deliveriesByStatus.find((s) => s.status === "DELIVERED")?.count ?? 0;
+    const totalFailed =
+      deliveriesByStatus.find((s) => s.status === "FAILED_DELIVERY")?.count ??
+      0;
+    const totalReturned =
+      deliveriesByStatus.find((s) => s.status === "RETURNED")?.count ?? 0;
+
+    const trendMap = new Map<string, number>();
+    for (const parcel of outcomeParcels) {
+      const dateKey = parcel.updatedAt.toISOString().slice(0, 10);
+      trendMap.set(dateKey, (trendMap.get(dateKey) ?? 0) + 1);
+    }
+
+    const deliveryTrend = Array.from(trendMap.entries())
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    return {
+      totalAssigned,
+      totalCompleted,
+      totalFailed,
+      totalReturned,
+      deliveriesByStatus,
+      deliveryTrend,
+    };
+  },
 };

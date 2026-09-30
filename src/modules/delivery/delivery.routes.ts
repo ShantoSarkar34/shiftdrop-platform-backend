@@ -69,4 +69,12 @@ router.get(
   deliveryController.getEarnings,
 );
 
+router.get(
+  "/analytics",
+  authenticate,
+  authorize("DELIVERY_AGENT"),
+  validateRequest(earningsQuerySchema),
+  deliveryController.getAnalytics,
+);
+
 export default router;

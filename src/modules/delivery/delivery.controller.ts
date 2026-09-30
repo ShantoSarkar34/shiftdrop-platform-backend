@@ -106,4 +106,21 @@ export const deliveryController = {
       data: result,
     });
   }),
+
+  getAnalytics: catchAsync(async (req: Request, res: Response) => {
+    if (!req.user) throw new ApiError(401, "Authentication required");
+    const period = req.query.period as
+      | "7d"
+      | "30d"
+      | "90d"
+      | "year"
+      | undefined;
+    const result = await deliveryService.getAnalytics(req.user.userId, period);
+    sendResponse(res, 200, {
+      success: true,
+      message: "Delivery analytics fetched successfully",
+      data: result,
+    });
+  }),
+  
 };

@@ -22,6 +22,13 @@ router.get(
   adminController.listUsers,
 );
 
+router.get(
+  "/dashboard/stats",
+  authenticate,
+  authorize("ADMIN"),
+  adminController.getDashboardStats,
+);
+
 router.patch(
   "/users/:id/status",
   authenticate,

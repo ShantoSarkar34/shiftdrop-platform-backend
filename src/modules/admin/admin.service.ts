@@ -1,5 +1,10 @@
 import { prisma } from "../../lib/prisma";
-import { Role, UserStatus } from "../../../generated/prisma";
+import {
+  Role,
+  UserStatus,
+  ParcelStatus,
+  PaymentStatus,
+} from "../../../generated/prisma";
 import { ApiError } from "../../modules/auth/auth.service";
 import { logAudit } from "../../utils/auditLogger";
 
@@ -135,5 +140,86 @@ export const adminService = {
 
       return updated;
     });
+  },
+
+  async getDashboardStats() {
+    const [
+      totalUsers,
+      usersByRole,
+      usersByStatus,
+      totalParcels,
+      parcelsByStatus,
+      totalPayments,
+      paymentsByStatus,
+      revenueResult,
+    ] = await Promise.all([
+      prisma.user.count({ where: { deletedAt: null } }),
+      prisma.user.groupBy({
+        by: ["role"],
+        where: { deletedAt: null },
+        _count: { _all: true },
+      }),
+      prisma.user.groupBy({
+        by: ["status"],
+        where: { deletedAt: null },
+        _count: { _all: true },
+      }),
+
+      prisma.parcel.count({ where: { deletedAt: null } }),
+      prisma.parcel.groupBy({
+        by: ["status"],
+        where: { deletedAt: null },
+        _count: { _all: true },
+      }),
+
+      prisma.payment.count(),
+      prisma.payment.groupBy({ by: ["status"], _count: { _all: true } }),
+      prisma.payment.aggregate({
+        where: { status: "PAID" },
+        _sum: { amount: true },
+      }),
+    ]);
+
+    const roleCount = (role: string) =>
+      usersByRole.find((r) => r.role === role)?._count._all ?? 0;
+    const statusCount = (status: string) =>
+      usersByStatus.find((s) => s.status === status)?._count._all ?? 0;
+    const parcelStatusCount = (status: ParcelStatus) =>
+      parcelsByStatus.find((p) => p.status === status)?._count._all ?? 0;
+    const paymentStatusCount = (status: PaymentStatus) =>
+      paymentsByStatus.find((p) => p.status === status)?._count._all ?? 0;
+
+    return {
+      users: {
+        total: totalUsers,
+        customers: roleCount("CUSTOMER"),
+        deliveryAgents: roleCount("DELIVERY_AGENT"),
+        admins: roleCount("ADMIN"),
+        active: statusCount("ACTIVE"),
+        suspended: statusCount("SUSPENDED"),
+      },
+      parcels: {
+        total: totalParcels,
+        pending: parcelStatusCount("PENDING"),
+        confirmed: parcelStatusCount("CONFIRMED"),
+        assigned: parcelStatusCount("ASSIGNED"),
+        pickedUp: parcelStatusCount("PICKED_UP"),
+        inTransit: parcelStatusCount("IN_TRANSIT"),
+        outForDelivery: parcelStatusCount("OUT_FOR_DELIVERY"),
+        delivered: parcelStatusCount("DELIVERED"),
+        failedDelivery: parcelStatusCount("FAILED_DELIVERY"),
+        returned: parcelStatusCount("RETURNED"),
+        cancelled: parcelStatusCount("CANCELLED"),
+      },
+      payments: {
+        total: totalPayments,
+        paid: paymentStatusCount("PAID"),
+        pending: paymentStatusCount("PENDING"),
+        failed: paymentStatusCount("FAILED"),
+      },
+      revenue: {
+        total: Math.round((revenueResult._sum.amount ?? 0) * 100) / 100,
+      },
+    };
   },
 };

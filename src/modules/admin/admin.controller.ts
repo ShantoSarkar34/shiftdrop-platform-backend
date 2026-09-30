@@ -55,4 +55,13 @@ export const adminController = {
       data: updated,
     });
   }),
+
+  getDashboardStats: catchAsync(async (req: Request, res: Response) => {
+    const stats = await adminService.getDashboardStats();
+    sendResponse(res, 200, {
+      success: true,
+      message: "Dashboard statistics fetched successfully",
+      data: stats,
+    });
+  }),
 };

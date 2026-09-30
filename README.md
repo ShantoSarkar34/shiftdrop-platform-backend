@@ -2,9 +2,7 @@
 
 A backend-only courier and logistics platform where customers create and track parcel shipments, delivery agents manage assigned deliveries, and administrators oversee users, shipments, delivery operations, payments, and platform activity. Built to support a frontend that will be developed separately later, without requiring architectural changes to the API.
 
-**Live API:** https://shiftdrop-platform-backend.vercel.app
-
-**APIs**: `/api/v1`
+**Live API:** https://shiftdrop-platform-backend.vercel.app/
 
 ---
 
@@ -24,22 +22,22 @@ The project was intentionally built phase by phase, with each phase kept deploya
 
 ## Tech Stack
 
-| Category     | Technology                                                            |
-| ------------ | --------------------------------------------------------------------- |
-| Runtime      | Node.js                                                               |
-| Language     | TypeScript                                                            |
-| Framework    | Express 5                                                             |
-| Database     | PostgreSQL                                                            |
-| ORM          | Prisma 7 (multi-file schema, driver adapter via `@prisma/adapter-pg`) |
-| Validation   | Zod                                                                   |
-| Auth         | JWT (access + rotating refresh tokens), bcryptjs password hashing     |
-| Social Login | Google OAuth (`google-auth-library`)                                  |
-| Payments     | Stripe Checkout + verified webhooks                                   |
-| Caching      | Upstash Redis (health-check round-trip)                               |
-| Security     | Helmet, CORS (origin allowlist), express-rate-limit                   |
-| Build        | tsup (esbuild-based bundler, solves path-alias resolution)            |
-| Deployment   | Vercel (serverless functions)                                         |
-| API Docs     | Postman collection                                                    |
+| Category | Technology |
+|---|---|
+| Runtime | Node.js |
+| Language | TypeScript |
+| Framework | Express 5 |
+| Database | PostgreSQL |
+| ORM | Prisma 7 (multi-file schema, driver adapter via `@prisma/adapter-pg`) |
+| Validation | Zod |
+| Auth | JWT (access + rotating refresh tokens), bcryptjs password hashing |
+| Social Login | Google OAuth (`google-auth-library`) |
+| Payments | Stripe Checkout + verified webhooks |
+| Caching | Upstash Redis (health-check round-trip) |
+| Security | Helmet, CORS (origin allowlist), express-rate-limit |
+| Build | tsup (esbuild-based bundler, solves path-alias resolution) |
+| Deployment | Vercel (serverless functions) |
+| API Docs | Postman collection |
 
 ---
 
@@ -58,7 +56,6 @@ The project was intentionally built phase by phase, with each phase kept deploya
 Payment integration follows a strict rule: **the backend never trusts a client-submitted payment status.** A request body like `{ "status": "PAID" }` has no code path that could ever set a payment to paid.
 
 **Flow:**
-
 ```
 Customer requests checkout
       ↓
@@ -74,11 +71,23 @@ Only then: Payment → PAID, Parcel → CONFIRMED, audit log written
 ```
 
 Key implementation details:
-
 - The webhook route is mounted with `express.raw()` **before** `express.json()` in the middleware chain, because Stripe's signature is computed over the exact raw request bytes — a JSON-parsed-and-re-serialized body would fail verification even if the content were identical.
 - Each processed Stripe event ID is stored (`lastProcessedEventId`) so retried/duplicate webhook deliveries are idempotent no-ops rather than double-processing.
 - A `FAILED` event can never downgrade an already-`PAID` payment, protecting against out-of-order webhook delivery.
 - Local webhook testing uses the Stripe CLI (`stripe listen --forward-to localhost:5000/api/v1/payments/webhook`), which forwards real test-mode events to the local server with its own signing secret.
+- In production, a webhook endpoint is registered directly in the Stripe Dashboard pointing at the live URL (`/api/v1/payments/webhook`), with its own `STRIPE_WEBHOOK_SECRET` set in the deployment environment — this is separate from the local CLI's secret.
+- `success_url`/`cancel_url` currently point at simple static HTML pages served from the backend (`/payment-success.html`, `/payment-cancelled.html`) via `CLIENT_URL`, since no frontend exists yet. Once the frontend is live, `CLIENT_URL` is updated to point there — no backend code changes required.
+
+---
+
+## Agent Earnings & Commission Model
+
+Delivery agents earn a **percentage-based commission** on shipments they complete:
+
+- **Rate:** `AGENT_COMMISSION_RATE` (env-configurable, default `0.7` — agent earns 70% of the shipment's `deliveryCharge`).
+- **Eligibility:** only parcels that are both `DELIVERED` **and** have a `PAID` payment count toward earnings. A delivered-but-unpaid shipment (e.g. a failed or abandoned payment) is deliberately excluded — crediting an agent for revenue the platform never actually collected would create a real financial liability.
+- **No schema changes required** — earnings are computed on read from existing `Parcel`/`Payment` data, not stored as a separate ledger. This keeps the model simple and avoids inventing a payroll system beyond what the project needs.
+- Percentage-based (rather than a flat fee per delivery) was chosen deliberately: it scales fairly with shipment size and revenue, matching how real courier platforms typically structure agent pay.
 
 ---
 
@@ -105,7 +114,7 @@ An attempt like `DELIVERED → PENDING` is rejected with `409 Conflict` before i
 
 Assigning an agent to a shipment is a classic double-booking risk under concurrent requests. This is handled with conditional, transaction-scoped `updateMany` calls instead of a naive read-then-write:
 
-- Claiming the agent (`availability: AVAILABLE → ON_DELIVERY`) and claiming the parcel (`status → ASSIGNED`) each check their _current_ state as part of the `WHERE` clause at write time, inside a single Prisma transaction.
+- Claiming the agent (`availability: AVAILABLE → ON_DELIVERY`) and claiming the parcel (`status → ASSIGNED`) each check their *current* state as part of the `WHERE` clause at write time, inside a single Prisma transaction.
 - If either claim affects zero rows — meaning someone else's request got there first — the whole operation fails loudly with `409 Conflict` and nothing is left in a half-updated state, rather than silently overwriting a concurrent assignment.
 
 ---
@@ -122,15 +131,16 @@ Assigning an agent to a shipment is a classic double-booking risk under concurre
 
 ## Problems & Challenges Encountered
 
-| Issue                                                                                                      | Resolution                                                                                                                                                                                                                                                                                                                                                                         |
-| ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Prisma 7 changed the default client export — `@prisma/client` no longer auto-exports `PrismaClient`        | Configured an explicit `output` path in the `generator client` block and imported from the generated path directly                                                                                                                                                                                                                                                                 |
-| `tsup` bundling conflicted with path aliases (`@/*`) during early setup                                    | Standardized on relative imports (`../../module`) across the codebase instead of relying on alias resolution at build time                                                                                                                                                                                                                                                         |
-| A profile update endpoint returned `200 OK` but showed stale (pre-update) data                             | Root cause: the confirmation read was happening _inside_ the same Prisma `$transaction` callback as the write, before the transaction had committed, so it read through an uncommitted/isolated view. Fixed by moving the read to run only after the transaction resolved                                                                                                          |
+| Issue | Resolution |
+|---|---|
+| Prisma 7 changed the default client export — `@prisma/client` no longer auto-exports `PrismaClient` | Configured an explicit `output` path in the `generator client` block and imported from the generated path directly |
+| `tsup` bundling conflicted with path aliases (`@/*`) during early setup | Standardized on relative imports (`../../module`) across the codebase instead of relying on alias resolution at build time |
+| A profile update endpoint returned `200 OK` but showed stale (pre-update) data | Root cause: the confirmation read was happening *inside* the same Prisma `$transaction` callback as the write, before the transaction had committed, so it read through an uncommitted/isolated view. Fixed by moving the read to run only after the transaction resolved |
 | Delivery agent assignment repeatedly returned `404 Delivery agent not found` despite a valid ID being sent | The ID being sent was the agent's `User.id`, but the service was looking it up by the internal `DeliveryAgent.id` (a different UUID) — a design gap, since there was no endpoint exposing the internal ID in the first place. Fixed by having the assignment endpoint accept and look up by `User.id` instead, which is the identifier an admin would realistically have access to |
-| Stripe webhook signature verification failing                                                              | Traced to `express.json()` parsing the body before it reached the webhook handler, which alters the raw bytes the signature was computed over. Fixed by mounting the webhook route with `express.raw()` ahead of the global JSON body parser                                                                                                                                       |
-| Postman requests returning `401 Authentication token is missing` despite a token being set                 | Two causes surfaced during testing: (1) the `Bearer ` prefix was omitted from the raw header value, and (2) a refresh token was mistakenly used where an access token was required — each is signed with a different secret and fails verification against the wrong one                                                                                                           |
-| Express 5's stricter typing on `req.params` (`string \| string[]`) breaking TypeScript builds              | Since Zod validation middleware already guarantees param shape before the controller runs, params are read with a narrow, justified type assertion at the point of use rather than restructuring the routing layer                                                                                                                                                                 |
+| Stripe webhook signature verification failing | Traced to `express.json()` parsing the body before it reached the webhook handler, which alters the raw bytes the signature was computed over. Fixed by mounting the webhook route with `express.raw()` ahead of the global JSON body parser |
+| Postman requests returning `401 Authentication token is missing` despite a token being set | Two causes surfaced during testing: (1) the `Bearer ` prefix was omitted from the raw header value, and (2) a refresh token was mistakenly used where an access token was required — each is signed with a different secret and fails verification against the wrong one |
+| Express 5's stricter typing on `req.params` (`string \| string[]`) breaking TypeScript builds | Since Zod validation middleware already guarantees param shape before the controller runs, params are read with a narrow, justified type assertion at the point of use rather than restructuring the routing layer |
+| The generic profile update endpoint (`PATCH /users/me`) allowed a delivery agent to set their own `availability` to any value, including `ON_DELIVERY` — which is meant to be system-controlled by active assignment, and could desync from real assignment state, risking a double-booking | `availability` was removed from the generic profile endpoint entirely and moved to a dedicated `PATCH /deliveries/availability` endpoint whose Zod schema only accepts `AVAILABLE`/`OFFLINE` (rejecting `ON_DELIVERY` before it reaches business logic), and which additionally checks for any active in-progress parcel before allowing the change |
 
 ---
 
@@ -167,7 +177,6 @@ Request flow: **Route → Validation (Zod) → Authentication → Authorization 
 All endpoints return a consistent envelope.
 
 **Success:**
-
 ```json
 {
   "success": true,
@@ -177,7 +186,6 @@ All endpoints return a consistent envelope.
 ```
 
 **Error:**
-
 ```json
 {
   "success": false,
@@ -187,7 +195,6 @@ All endpoints return a consistent envelope.
 ```
 
 List endpoints additionally include a `meta` object for pagination:
-
 ```json
 { "page": 1, "limit": 10, "total": 42, "totalPages": 5 }
 ```
@@ -201,64 +208,62 @@ All routes are versioned under `/api/v1`.
 Full request/response examples for every route below are in the accompanying **Postman collection** (`SwiftDrop.postman_collection.json`). Import it and set the `baseUrl`, `accessToken`, and `refreshToken` collection variables to get started.
 
 ### Auth (`/api/v1/auth`)
-
-| Method | Route            | Access | Description                            |
-| ------ | ---------------- | ------ | -------------------------------------- |
-| POST   | `/register`      | Public | Register as CUSTOMER or DELIVERY_AGENT |
-| POST   | `/login`         | Public | Email/password login                   |
-| POST   | `/google`        | Public | Login/register via Google idToken      |
-| POST   | `/refresh-token` | Public | Rotate refresh token, issue new pair   |
-| POST   | `/logout`        | Public | Revoke a refresh token                 |
+| Method | Route | Access | Description |
+|---|---|---|---|
+| POST | `/register` | Public | Register as CUSTOMER or DELIVERY_AGENT |
+| POST | `/login` | Public | Email/password login |
+| POST | `/google` | Public | Login/register via Google idToken |
+| POST | `/refresh-token` | Public | Rotate refresh token, issue new pair |
+| POST | `/logout` | Public | Revoke a refresh token |
 
 ### Users (`/api/v1/users`)
-
-| Method | Route | Access        | Description                  |
-| ------ | ----- | ------------- | ---------------------------- |
-| GET    | `/me` | Authenticated | Get own profile (role-aware) |
-| PATCH  | `/me` | Authenticated | Update own profile           |
+| Method | Route | Access | Description |
+|---|---|---|---|
+| GET | `/me` | Authenticated | Get own profile (role-aware) |
+| PATCH | `/me` | Authenticated | Update own profile |
 
 ### Parcels (`/api/v1/parcels`)
-
-| Method | Route         | Access                | Description                                                                                   |
-| ------ | ------------- | --------------------- | --------------------------------------------------------------------------------------------- |
-| POST   | `/`           | CUSTOMER              | Create a shipment                                                                             |
-| GET    | `/`           | Authenticated         | List shipments (role-scoped) — supports `page`, `limit`, `status`, `sortBy`, `sortOrder`, `q` |
-| GET    | `/:id`        | Authenticated         | Get shipment details + status history (ownership enforced)                                    |
-| PATCH  | `/:id/cancel` | CUSTOMER              | Cancel a shipment (only while PENDING/CONFIRMED)                                              |
-| PATCH  | `/:id/status` | DELIVERY_AGENT, ADMIN | Advance shipment status per the state machine                                                 |
+| Method | Route | Access | Description |
+|---|---|---|---|
+| POST | `/` | CUSTOMER | Create a shipment |
+| GET | `/` | Authenticated | List shipments (role-scoped) — supports `page`, `limit`, `status`, `sortBy`, `sortOrder`, `q` |
+| GET | `/:id` | Authenticated | Get shipment details + status history (ownership enforced) |
+| PATCH | `/:id/cancel` | CUSTOMER | Cancel a shipment (only while PENDING/CONFIRMED) |
+| PATCH | `/:id/status` | DELIVERY_AGENT, ADMIN | Advance shipment status per the state machine |
 
 ### Deliveries (`/api/v1/deliveries`)
-
-| Method | Route               | Access         | Description                                                       |
-| ------ | ------------------- | -------------- | ----------------------------------------------------------------- |
-| PATCH  | `/:parcelId/assign` | ADMIN          | Assign a delivery agent (by User ID) to a shipment                |
-| PATCH  | `/:parcelId/accept` | DELIVERY_AGENT | Accept an assignment                                              |
-| PATCH  | `/:parcelId/reject` | DELIVERY_AGENT | Reject an assignment (returns parcel to pool)                     |
-| PATCH  | `/:parcelId/pickup` | DELIVERY_AGENT | Mark parcel as picked up                                          |
-| GET    | `/my`               | DELIVERY_AGENT | List own assigned deliveries — supports `page`, `limit`, `status` |
+| Method | Route | Access | Description |
+|---|---|---|---|
+| PATCH | `/:parcelId/assign` | ADMIN | Assign a delivery agent (by User ID) to a shipment |
+| PATCH | `/:parcelId/accept` | DELIVERY_AGENT | Accept an assignment |
+| PATCH | `/:parcelId/reject` | DELIVERY_AGENT | Reject an assignment (returns parcel to pool) |
+| PATCH | `/:parcelId/pickup` | DELIVERY_AGENT | Mark parcel as picked up |
+| GET | `/my` | DELIVERY_AGENT | List own assigned deliveries — supports `page`, `limit`, `status` |
+| PATCH | `/availability` | DELIVERY_AGENT | Set own availability to `AVAILABLE` or `OFFLINE`. `ON_DELIVERY` is system-controlled and cannot be set manually; blocked with `409` while an active delivery is in progress |
+| GET | `/earnings` | DELIVERY_AGENT | Own earnings summary + trend — supports `period` (`7d`/`30d`/`90d`/`year`, omit for all-time). Commission-based (see Payment System section) |
+| GET | `/analytics` | DELIVERY_AGENT | Own delivery performance breakdown + outcome trend — supports `period` |
 
 ### Payments (`/api/v1/payments`)
-
-| Method | Route                 | Access      | Description                                         |
-| ------ | --------------------- | ----------- | --------------------------------------------------- |
-| POST   | `/:parcelId/checkout` | CUSTOMER    | Create a Stripe Checkout session                    |
-| GET    | `/:parcelId`          | CUSTOMER    | Get payment details for a shipment                  |
-| GET    | `/`                   | CUSTOMER    | List own payment history — supports `page`, `limit` |
-| POST   | `/webhook`            | Stripe only | Verified webhook — updates payment/shipment status  |
+| Method | Route | Access | Description |
+|---|---|---|---|
+| POST | `/:parcelId/checkout` | CUSTOMER | Create a Stripe Checkout session |
+| GET | `/:parcelId` | CUSTOMER | Get payment details for a shipment |
+| GET | `/` | CUSTOMER | List own payment history — supports `page`, `limit` |
+| POST | `/webhook` | Stripe only | Verified webhook — updates payment/shipment status |
 
 ### Admin (`/api/v1/admin`)
-
-| Method | Route               | Access | Description                                                                                                                                                                                    |
-| ------ | ------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/audit-logs`       | ADMIN  | View audit trail — supports `page`, `limit`, `action`, `entityType`, `actorId` filters                                                                                                         |
-| GET    | `/users`            | ADMIN  | List platform users — supports `page`, `limit`, `role`, `status`, `q` (name/email search), `sortBy`, `sortOrder`. Never returns password hashes or refresh tokens; excludes soft-deleted users |
-| PATCH  | `/users/:id/status` | ADMIN  | Set a user's status to `ACTIVE` or `SUSPENDED`. Cannot change role. Cannot be used on the admin's own account. Writes a `USER_STATUS_CHANGED` audit log entry                                  |
+| Method | Route | Access | Description |
+|---|---|---|---|
+| GET | `/dashboard/stats` | ADMIN | Real-time aggregate counts — users, parcels, payments, and total revenue (sum of `PAID` payments) |
+| GET | `/dashboard/analytics` | ADMIN | Shipment trend, revenue trend, and status distribution, shaped for charts — supports `period` (defaults to `30d`) |
+| GET | `/audit-logs` | ADMIN | View audit trail — supports `page`, `limit`, `action`, `entityType`, `actorId` filters |
+| GET | `/users` | ADMIN | List platform users — supports `page`, `limit`, `role`, `status`, `q` (name/email search), `sortBy`, `sortOrder`. Never returns password hashes or refresh tokens; excludes soft-deleted users |
+| PATCH | `/users/:id/status` | ADMIN | Set a user's status to `ACTIVE` or `SUSPENDED`. Cannot change role. Cannot be used on the admin's own account. Writes a `USER_STATUS_CHANGED` audit log entry |
 
 ### Health
-
-| Method | Route            | Access | Description                                       |
-| ------ | ---------------- | ------ | ------------------------------------------------- |
-| GET    | `/api/v1/health` | Public | Confirms server, database, and Redis connectivity |
+| Method | Route | Access | Description |
+|---|---|---|---|
+| GET | `/api/v1/health` | Public | Confirms server, database, and Redis connectivity |
 
 ---
 
@@ -274,6 +279,14 @@ GOOGLE_CLIENT_ID=
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 ALLOWED_ORIGINS=
+CLIENT_URL=
+AGENT_COMMISSION_RATE=       # default 0.7 — agent's share of deliveryCharge per completed, paid delivery
+SEED_ADMIN_EMAIL=
+SEED_ADMIN_PASSWORD=
+SEED_CUSTOMER_EMAIL=
+SEED_CUSTOMER_PASSWORD=
+SEED_AGENT_EMAIL=
+SEED_AGENT_PASSWORD=
 ```
 
 ---
@@ -290,9 +303,40 @@ npm run dev
 Server starts on `http://localhost:5000`. Health check: `GET /api/v1/health`.
 
 For local Stripe webhook testing:
-
 ```bash
 stripe listen --forward-to localhost:5000/api/v1/payments/webhook
 ```
 
 ---
+
+## Demo Accounts
+
+Seeded via `npm run seed` (idempotent — safe to re-run). Credentials come from `.env`'s `SEED_*` variables; the values below are the project's current defaults — update this table if those variables are changed.
+
+| Role | Email | Password |
+|---|---|---|
+| ADMIN | `admin@swiftdrop.com` | *(value of `SEED_ADMIN_PASSWORD`)* |
+| CUSTOMER | `customer@swiftdrop.com` | *(value of `SEED_CUSTOMER_PASSWORD`)* |
+| DELIVERY_AGENT | `agent@swiftdrop.com` | *(value of `SEED_AGENT_PASSWORD`)* |
+
+All three log in through the standard endpoint — `POST /api/v1/auth/login` — there is no separate demo-login bypass. A frontend "quick login" button for each role should simply call this endpoint with the credentials above.
+
+---
+
+## Frontend Integration Notes
+
+**Base URL:** `https://shiftdrop-platform-backend.vercel.app/api/v1` (set as `NEXT_PUBLIC_API_BASE_URL` or equivalent in the frontend's env).
+
+**Authentication:** store `accessToken` and `refreshToken` from login/register/google responses. Send `Authorization: Bearer <accessToken>` on every authenticated request. On a `401` from an expired access token, call `POST /auth/refresh-token` with the stored refresh token to get a new pair, then retry the original request once.
+
+**Role routing:** `role` comes back on every login/profile response (`CUSTOMER` / `DELIVERY_AGENT` / `ADMIN`). Route users to `/dashboard`, `/provider`, or `/admin` accordingly after login — the backend enforces the real authorization regardless of what the frontend renders, so this is a UX routing decision, not a security boundary.
+
+**Stripe flow:** call `POST /payments/:parcelId/checkout`, redirect the browser to the returned `checkoutUrl`. After payment, Stripe redirects to the backend's static success/cancel pages (see Payment System section) — poll or refetch `GET /payments/:parcelId` on the frontend's own success page to confirm `status: "PAID"` before showing a confirmation state, since the redirect itself is not proof of payment — the webhook is.
+
+**Pagination/filter/sort convention:** every list endpoint (`parcels`, `payments`, `admin/users`, `admin/audit-logs`, `deliveries/my`) uses the same query shape — `page`, `limit`, plus endpoint-specific filters (`status`, `role`, `q`, etc.) — and returns the same `meta: { page, limit, total, totalPages }` object. Safe to build one generic pagination hook/component against this shape.
+
+---
+
+## Status
+
+Core backend is feature-complete against the current spec, including frontend-support endpoints (agent availability/earnings/analytics, admin dashboard stats/analytics). Remaining work before frontend integration begins: confirm the production Stripe webhook endpoint is registered and verified against the live URL, and a final end-to-end regression pass on production.

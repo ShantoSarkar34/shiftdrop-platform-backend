@@ -6,6 +6,7 @@ import { validateRequest } from "../../middlewares/validateRequest";
 import {
   assignAgentSchema,
   deliveryActionSchema,
+  earningsQuerySchema,
   myDeliveriesSchema,
   updateAvailabilitySchema,
 } from "./delivery.validation";
@@ -25,7 +26,7 @@ router.patch(
   authenticate,
   authorize("DELIVERY_AGENT"),
   validateRequest(updateAvailabilitySchema),
-  deliveryController.updateAvailability
+  deliveryController.updateAvailability,
 );
 
 router.patch(
@@ -58,6 +59,14 @@ router.patch(
   authorize("DELIVERY_AGENT"),
   validateRequest(deliveryActionSchema),
   deliveryController.pickup,
+);
+
+router.get(
+  "/earnings",
+  authenticate,
+  authorize("DELIVERY_AGENT"),
+  validateRequest(earningsQuerySchema),
+  deliveryController.getEarnings,
 );
 
 export default router;

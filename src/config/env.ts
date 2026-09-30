@@ -18,6 +18,7 @@ const envSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().min(1, "STRIPE_WEBHOOK_SECRET is required"),
   CLIENT_URL: z.string().default("http://localhost:3000"),
   ALLOWED_ORIGINS: z.string().default("http://localhost:3000"),
+  AGENT_COMMISSION_RATE: z.coerce.number().min(0).max(1).default(0.7),
 });
 
 export const env = envSchema.parse(process.env);

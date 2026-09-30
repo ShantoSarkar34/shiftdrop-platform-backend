@@ -1,7 +1,8 @@
 import { prisma } from "../../lib/prisma";
 import { ApiError } from "../../modules/auth/auth.service";
 import { logAudit } from "../../utils/auditLogger";
-import { ParcelStatus } from "../../../generated/prisma";
+import { ParcelStatus, Prisma } from "../../../generated/prisma";
+import { env } from "../../config/env";
 
 export const deliveryService = {
   async assignAgent(
@@ -284,6 +285,86 @@ export const deliveryService = {
     return {
       parcels,
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
+  },
+
+  async getEarnings(userId: string, period?: "7d" | "30d" | "90d" | "year") {
+    const agent = await prisma.deliveryAgent.findUnique({ where: { userId } });
+    if (!agent) throw new ApiError(404, "Delivery agent profile not found");
+
+    const PERIOD_DAYS: Record<string, number> = {
+      "7d": 7,
+      "30d": 30,
+      "90d": 90,
+      year: 365,
+    };
+    let startDate: Date | undefined;
+    if (period) {
+      startDate = new Date();
+      startDate.setDate(startDate.getDate() - PERIOD_DAYS[period]);
+    }
+
+    const commissionRate = env.AGENT_COMMISSION_RATE;
+
+    const completedWhere: Prisma.ParcelWhereInput = {
+      assignedAgentId: agent.id,
+      deletedAt: null,
+      status: "DELIVERED",
+      payment: { is: { status: "PAID" } },
+      ...(startDate && { updatedAt: { gte: startDate } }),
+    };
+
+    const failedWhere: Prisma.ParcelWhereInput = {
+      assignedAgentId: agent.id,
+      deletedAt: null,
+      status: "FAILED_DELIVERY",
+      ...(startDate && { updatedAt: { gte: startDate } }),
+    };
+
+    const activeWhere: Prisma.ParcelWhereInput = {
+      assignedAgentId: agent.id,
+      deletedAt: null,
+      status: {
+        in: ["ASSIGNED", "PICKED_UP", "IN_TRANSIT", "OUT_FOR_DELIVERY"],
+      },
+    };
+
+    const [completedParcels, failedCount, pendingCount] = await Promise.all([
+      prisma.parcel.findMany({
+        where: completedWhere,
+        select: { deliveryCharge: true, updatedAt: true },
+        orderBy: { updatedAt: "asc" },
+      }),
+      prisma.parcel.count({ where: failedWhere }),
+      prisma.parcel.count({ where: activeWhere }), // current in-progress count — never period-filtered
+    ]);
+
+    const earningsByDate = new Map<string, number>();
+    const deliveryByDate = new Map<string, number>();
+    let totalEarnings = 0;
+
+    for (const parcel of completedParcels) {
+      const earned = parcel.deliveryCharge * commissionRate;
+      totalEarnings += earned;
+      const dateKey = parcel.updatedAt.toISOString().slice(0, 10);
+      earningsByDate.set(dateKey, (earningsByDate.get(dateKey) ?? 0) + earned);
+      deliveryByDate.set(dateKey, (deliveryByDate.get(dateKey) ?? 0) + 1);
+    }
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+
+    return {
+      totalEarnings: round2(totalEarnings),
+      completedDeliveries: completedParcels.length,
+      pendingDeliveries: pendingCount,
+      failedDeliveries: failedCount,
+      commissionRate,
+      earningsTrend: Array.from(earningsByDate.entries())
+        .map(([date, amount]) => ({ date, amount: round2(amount) }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+      deliveryTrend: Array.from(deliveryByDate.entries())
+        .map(([date, count]) => ({ date, count }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
     };
   },
 };

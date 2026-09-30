@@ -33,6 +33,12 @@ export const myDeliveriesSchema = z.object({
   }),
 });
 
+export const earningsQuerySchema = z.object({
+  query: z.object({
+    period: z.enum(["7d", "30d", "90d", "year"]).optional(),
+  }),
+});
+
 export const updateAvailabilitySchema = z.object({
   body: z.object({
     availability: z.enum(["AVAILABLE", "OFFLINE"]),

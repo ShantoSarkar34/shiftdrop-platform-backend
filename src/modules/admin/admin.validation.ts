@@ -20,3 +20,9 @@ export const updateUserStatusSchema = z.object({
     status: z.enum(["ACTIVE", "SUSPENDED"]),
   }),
 });
+
+export const dashboardAnalyticsSchema = z.object({
+  query: z.object({
+    period: z.enum(["7d", "30d", "90d", "year"]).optional(),
+  }),
+});

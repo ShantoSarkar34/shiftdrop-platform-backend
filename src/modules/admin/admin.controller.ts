@@ -64,4 +64,15 @@ export const adminController = {
       data: stats,
     });
   }),
+
+  getDashboardAnalytics: catchAsync(async (req: Request, res: Response) => {
+    const period =
+      (req.query.period as "7d" | "30d" | "90d" | "year" | undefined) ?? "30d";
+    const result = await adminService.getDashboardAnalytics(period);
+    sendResponse(res, 200, {
+      success: true,
+      message: "Dashboard analytics fetched successfully",
+      data: result,
+    });
+  }),
 };

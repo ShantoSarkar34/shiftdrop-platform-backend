@@ -3,7 +3,11 @@ import { adminController } from "./admin.controller";
 import { authenticate } from "../../middlewares/authenticate";
 import { authorize } from "../../middlewares/authorize";
 import { validateRequest } from "../../middlewares/validateRequest";
-import { listUsersSchema, updateUserStatusSchema } from "./admin.validation";
+import {
+  dashboardAnalyticsSchema,
+  listUsersSchema,
+  updateUserStatusSchema,
+} from "./admin.validation";
 
 const router = Router();
 
@@ -27,6 +31,14 @@ router.get(
   authenticate,
   authorize("ADMIN"),
   adminController.getDashboardStats,
+);
+
+router.get(
+  "/dashboard/analytics",
+  authenticate,
+  authorize("ADMIN"),
+  validateRequest(dashboardAnalyticsSchema),
+  adminController.getDashboardAnalytics,
 );
 
 router.patch(

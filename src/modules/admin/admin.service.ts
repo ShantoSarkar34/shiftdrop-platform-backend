@@ -222,4 +222,66 @@ export const adminService = {
       },
     };
   },
+
+  async getDashboardAnalytics(period: "7d" | "30d" | "90d" | "year" = "30d") {
+    const PERIOD_DAYS: Record<string, number> = {
+      "7d": 7,
+      "30d": 30,
+      "90d": 90,
+      year: 365,
+    };
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - PERIOD_DAYS[period]);
+
+    const [parcelsInPeriod, paidPaymentsInPeriod, statusGroups] =
+      await Promise.all([
+        prisma.parcel.findMany({
+          where: { deletedAt: null, createdAt: { gte: startDate } },
+          select: { createdAt: true },
+        }),
+
+        prisma.payment.findMany({
+          where: { status: "PAID", updatedAt: { gte: startDate } },
+          select: { amount: true, updatedAt: true },
+        }),
+
+        prisma.parcel.groupBy({
+          by: ["status"],
+          where: { deletedAt: null, createdAt: { gte: startDate } },
+          _count: { _all: true },
+        }),
+      ]);
+
+    const shipmentTrendMap = new Map<string, number>();
+    for (const parcel of parcelsInPeriod) {
+      const dateKey = parcel.createdAt.toISOString().slice(0, 10);
+      shipmentTrendMap.set(dateKey, (shipmentTrendMap.get(dateKey) ?? 0) + 1);
+    }
+
+    const revenueTrendMap = new Map<string, number>();
+    for (const payment of paidPaymentsInPeriod) {
+      const dateKey = payment.updatedAt.toISOString().slice(0, 10);
+      revenueTrendMap.set(
+        dateKey,
+        (revenueTrendMap.get(dateKey) ?? 0) + payment.amount,
+      );
+    }
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+
+    const shipmentTrend = Array.from(shipmentTrendMap.entries())
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const revenueTrend = Array.from(revenueTrendMap.entries())
+      .map(([date, amount]) => ({ date, amount: round2(amount) }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const statusDistribution = statusGroups.map((g) => ({
+      status: g.status,
+      count: g._count._all,
+    }));
+
+    return { shipmentTrend, revenueTrend, statusDistribution };
+  },
 };

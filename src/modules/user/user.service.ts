@@ -8,7 +8,6 @@ interface UpdateProfileInput {
   defaultPickupAddress?: string;
   vehicleType?: string;
   licenseNumber?: string;
-  availability?: "AVAILABLE" | "ON_DELIVERY" | "OFFLINE";
 }
 
 export const userService = {
@@ -42,14 +41,8 @@ export const userService = {
   },
 
   async updateProfile(userId: string, role: Role, input: UpdateProfileInput) {
-    const {
-      name,
-      phone,
-      defaultPickupAddress,
-      vehicleType,
-      licenseNumber,
-      availability,
-    } = input;
+    const { name, phone, defaultPickupAddress, vehicleType, licenseNumber } =
+      input;
 
     await prisma.$transaction(async (tx) => {
       if (name || phone) {
@@ -71,7 +64,6 @@ export const userService = {
         if (vehicleType !== undefined) agentData.vehicleType = vehicleType;
         if (licenseNumber !== undefined)
           agentData.licenseNumber = licenseNumber;
-        if (availability !== undefined) agentData.availability = availability;
 
         if (Object.keys(agentData).length > 0) {
           await tx.deliveryAgent.update({

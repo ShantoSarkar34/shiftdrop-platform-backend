@@ -79,6 +79,57 @@ export const deliveryService = {
     });
   },
 
+  async updateAvailability(
+    userId: string,
+    newAvailability: "AVAILABLE" | "OFFLINE",
+  ) {
+    const agent = await prisma.deliveryAgent.findUnique({ where: { userId } });
+    if (!agent) throw new ApiError(404, "Delivery agent profile not found");
+
+    if (agent.availability === newAvailability) {
+      throw new ApiError(409, `Availability is already ${newAvailability}`);
+    }
+
+    const activeParcel = await prisma.parcel.findFirst({
+      where: {
+        assignedAgentId: agent.id,
+        status: {
+          in: ["ASSIGNED", "PICKED_UP", "IN_TRANSIT", "OUT_FOR_DELIVERY"],
+        },
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+
+    if (activeParcel) {
+      throw new ApiError(
+        409,
+        "Cannot change availability while an active delivery is in progress",
+      );
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.deliveryAgent.update({
+        where: { id: agent.id },
+        data: { availability: newAvailability },
+        select: { availability: true },
+      });
+
+      await logAudit(
+        {
+          actorId: userId,
+          action: "AGENT_AVAILABILITY_CHANGED",
+          entityType: "DeliveryAgent",
+          entityId: agent.id,
+          metadata: { from: agent.availability, to: newAvailability },
+        },
+        tx,
+      );
+
+      return updated;
+    });
+  },
+
   async acceptAssignment(userId: string, parcelId: string) {
     const agent = await prisma.deliveryAgent.findUnique({ where: { userId } });
     if (!agent) throw new ApiError(404, "Delivery agent profile not found");

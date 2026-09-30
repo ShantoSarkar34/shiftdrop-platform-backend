@@ -7,6 +7,7 @@ import {
   assignAgentSchema,
   deliveryActionSchema,
   myDeliveriesSchema,
+  updateAvailabilitySchema,
 } from "./delivery.validation";
 
 const router = Router();
@@ -17,6 +18,14 @@ router.get(
   authorize("DELIVERY_AGENT"),
   validateRequest(myDeliveriesSchema),
   deliveryController.getMyDeliveries,
+);
+
+router.patch(
+  "/availability",
+  authenticate,
+  authorize("DELIVERY_AGENT"),
+  validateRequest(updateAvailabilitySchema),
+  deliveryController.updateAvailability
 );
 
 router.patch(

@@ -32,3 +32,9 @@ export const myDeliveriesSchema = z.object({
       .optional(),
   }),
 });
+
+export const updateAvailabilitySchema = z.object({
+  body: z.object({
+    availability: z.enum(["AVAILABLE", "OFFLINE"]),
+  }),
+});

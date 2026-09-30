@@ -20,6 +20,19 @@ export const deliveryController = {
     });
   }),
 
+  updateAvailability: catchAsync(async (req: Request, res: Response) => {
+    if (!req.user) throw new ApiError(401, "Authentication required");
+    const updated = await deliveryService.updateAvailability(
+      req.user.userId,
+      req.body.availability,
+    );
+    sendResponse(res, 200, {
+      success: true,
+      message: "Availability updated successfully",
+      data: updated,
+    });
+  }),
+
   accept: catchAsync(async (req: Request, res: Response) => {
     if (!req.user) throw new ApiError(401, "Authentication required");
     const parcelId = req.params.parcelId as string;

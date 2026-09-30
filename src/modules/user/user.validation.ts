@@ -5,10 +5,9 @@ export const updateProfileSchema = z.object({
     .object({
       name: z.string().min(2, "Name must be at least 2 characters").optional(),
       phone: z.string().min(6, "Invalid phone number").optional(),
-      defaultPickupAddress: z.string().optional(), // customer-only field
-      vehicleType: z.string().optional(), // agent-only field
-      licenseNumber: z.string().optional(), // agent-only field
-      availability: z.enum(["AVAILABLE", "ON_DELIVERY", "OFFLINE"]).optional(), // agent-only field
+      defaultPickupAddress: z.string().optional(),
+      vehicleType: z.string().optional(), 
+      licenseNumber: z.string().optional(),
     })
     .refine((data) => Object.keys(data).length > 0, {
       message: "At least one field must be provided to update",

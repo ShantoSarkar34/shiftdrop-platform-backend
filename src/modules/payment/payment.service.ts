@@ -43,7 +43,6 @@ export const paymentService = {
       metadata: { parcelId: parcel.id, customerId: customer.id },
     });
 
-    // Upsert: create the PENDING payment row, or update it if retrying after a previous cancelled attempt
     const payment = await prisma.payment.upsert({
       where: { parcelId: parcel.id },
       update: {

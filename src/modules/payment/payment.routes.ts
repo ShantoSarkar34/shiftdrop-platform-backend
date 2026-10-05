@@ -31,6 +31,4 @@ router.get(
   paymentController.listMine,
 );
 
-// Note: webhook route is NOT here — it's mounted separately in app.ts (see below)
-
 export default router;

@@ -45,7 +45,7 @@ router.post(
   authController.logout,
 );
 
-// Temporary test route — will be replaced by the real profile route in Phase 9
+
 router.get("/me", authLimiter, authenticate, (req, res) => {
   sendResponse(res, 200, {
     success: true,
@@ -54,7 +54,7 @@ router.get("/me", authLimiter, authenticate, (req, res) => {
   });
 });
 
-// Temporary test route — proves role restriction works
+
 router.get(
   "/admin-only",
   authLimiter,

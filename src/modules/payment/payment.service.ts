@@ -38,7 +38,7 @@ export const paymentService = {
           quantity: 1,
         },
       ],
-      success_url: `${env.CLIENT_URL}/payment/success?parcelId=${parcel.id}`,
+      success_url: `${env.CLIENT_URL}/payment/success?parcelId=${parcel.id}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${env.CLIENT_URL}/payment/cancel?parcelId=${parcel.id}`,
       metadata: { parcelId: parcel.id, customerId: customer.id },
     });
@@ -63,6 +63,13 @@ export const paymentService = {
   },
 
   async handleWebhookEvent(rawBody: Buffer, signature: string) {
+    console.log(
+      "[webhook] received, body length:",
+      rawBody?.length,
+      "signature present:",
+      !!signature,
+    );
+
     let event: Stripe.Event;
     try {
       event = stripe.webhooks.constructEvent(
@@ -71,12 +78,22 @@ export const paymentService = {
         env.STRIPE_WEBHOOK_SECRET,
       );
     } catch (err) {
+      console.error(
+        "[webhook] signature verification failed:",
+        err instanceof Error ? err.message : err,
+      );
       throw new ApiError(400, `Webhook signature verification failed`);
     }
+
+    // console.log("[webhook] verified event:", event.type, event.id);
 
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
+        console.log(
+          "[webhook] checkout.session.completed — session:",
+          session.id,
+        );
         await this.markPaid(
           session.id,
           event.id,
@@ -86,11 +103,15 @@ export const paymentService = {
       }
       case "checkout.session.expired": {
         const session = event.data.object as Stripe.Checkout.Session;
+        console.log(
+          "[webhook] checkout.session.expired — session:",
+          session.id,
+        );
         await this.markFailed(session.id, event.id);
         break;
       }
       default:
-        // Unhandled event types are fine to ignore — Stripe sends many we don't need
+        console.log("[webhook] unhandled event type, ignoring:", event.type);
         break;
     }
 
@@ -101,14 +122,31 @@ export const paymentService = {
     stripeSessionId: string,
     eventId: string,
     paymentIntentId: string,
+    source: "webhook" | "sync" = "webhook",
   ) {
     const payment = await prisma.payment.findUnique({
       where: { stripeCheckoutSessionId: stripeSessionId },
     });
-    if (!payment) return; // no matching payment — ignore (could be a stale/foreign event)
 
-    if (payment.lastProcessedEventId === eventId) return; // idempotency: already processed
-    if (payment.status === "PAID") return; // already paid, ignore duplicate
+    if (!payment) {
+      console.warn("[markPaid] no payment found for session:", stripeSessionId);
+      return;
+    }
+    console.log(
+      "[markPaid] found payment:",
+      payment.id,
+      "current status:",
+      payment.status,
+    );
+
+    if (payment.lastProcessedEventId === eventId) {
+      console.log("[markPaid] event already processed, skipping:", eventId);
+      return;
+    }
+    if (payment.status === "PAID") {
+      console.log("[markPaid] payment already PAID, skipping");
+      return;
+    }
 
     await prisma.$transaction(async (tx) => {
       await tx.payment.update({
@@ -122,15 +160,18 @@ export const paymentService = {
 
       await tx.parcel.update({
         where: { id: payment.parcelId },
-        data: { status: "CONFIRMED" }, // payment confirms the shipment, moving it past PENDING
+        data: { status: "CONFIRMED" },
       });
 
       await tx.parcelStatusHistory.create({
         data: {
           parcelId: payment.parcelId,
           status: "CONFIRMED",
-          changedBy: null, // system-triggered, not a specific user
-          note: "Payment confirmed via Stripe",
+          changedBy: null,
+          note:
+            source === "sync"
+              ? "Payment confirmed via manual sync"
+              : "Payment confirmed via Stripe webhook",
         },
       });
 
@@ -140,11 +181,55 @@ export const paymentService = {
           action: "PAYMENT_COMPLETED",
           entityType: "Payment",
           entityId: payment.id,
-          metadata: { amount: payment.amount },
+          metadata: { amount: payment.amount, source },
         },
         tx,
       );
     });
+  },
+
+  async syncFromStripeSession(userId: string, sessionId: string) {
+    const customer = await prisma.customer.findUnique({ where: { userId } });
+    if (!customer) throw new ApiError(404, "Customer profile not found");
+
+    const payment = await prisma.payment.findUnique({
+      where: { stripeCheckoutSessionId: sessionId },
+    });
+    if (!payment) throw new ApiError(404, "No payment found for this session");
+    if (payment.customerId !== customer.id)
+      throw new ApiError(403, "Access denied");
+
+    if (payment.status === "PAID") {
+      console.log("[sync] payment already PAID, returning as-is:", payment.id);
+      return payment;
+    }
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    console.log(
+      "[sync] stripe session status:",
+      session.payment_status,
+      "for session:",
+      sessionId,
+    );
+
+    if (session.payment_status === "paid") {
+      await this.markPaid(
+        sessionId,
+        `sync_${Date.now()}`,
+        session.payment_intent as string,
+        "sync",
+      );
+      return prisma.payment.findUnique({ where: { id: payment.id } });
+    }
+
+    if (session.status === "expired") {
+      await this.markFailed(sessionId, `sync_${Date.now()}`);
+      return prisma.payment.findUnique({ where: { id: payment.id } });
+    }
+
+    // Still genuinely pending on Stripe's side — return current (unpaid) state, not an error
+    console.log("[sync] payment still pending on Stripe's side");
+    return payment;
   },
 
   async markFailed(stripeSessionId: string, eventId: string) {

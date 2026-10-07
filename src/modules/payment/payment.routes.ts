@@ -3,7 +3,7 @@ import { paymentController } from "./payment.controller";
 import { authenticate } from "../../middlewares/authenticate";
 import { authorize } from "../../middlewares/authorize";
 import { validateRequest } from "../../middlewares/validateRequest";
-import { createCheckoutSchema } from "./payment.validation";
+import { createCheckoutSchema, syncPaymentSchema } from "./payment.validation";
 import { paymentLimiter } from "../../middlewares/rateLimiter";
 
 const router = Router();
@@ -29,6 +29,14 @@ router.get(
   authenticate,
   authorize("CUSTOMER"),
   paymentController.listMine,
+);
+
+router.get(
+  "/sync/:sessionId",
+  authenticate,
+  authorize("CUSTOMER"),
+  validateRequest(syncPaymentSchema),
+  paymentController.syncPayment,
 );
 
 export default router;

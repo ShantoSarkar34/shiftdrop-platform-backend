@@ -52,4 +52,18 @@ export const paymentController = {
       meta: result.meta,
     });
   }),
+
+  syncPayment: catchAsync(async (req: Request, res: Response) => {
+    if (!req.user) throw new ApiError(401, "Authentication required");
+    const sessionId = req.params.sessionId as string;
+    const payment = await paymentService.syncFromStripeSession(
+      req.user.userId,
+      sessionId,
+    );
+    sendResponse(res, 200, {
+      success: true,
+      message: "Payment status synced",
+      data: payment,
+    });
+  }),
 };

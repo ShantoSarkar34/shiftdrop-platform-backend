@@ -14,6 +14,7 @@ import v1Routes from "./routes/index";
 import { paymentController } from "./modules/payment/payment.controller";
 
 const app: Application = express();
+app.set("trust proxy", 1);
 
 app.use(helmet());
 
